@@ -2731,6 +2731,22 @@ var qz = (function() {
 
 qz.websocket.connect().then(function() {
     alert("Connected!");
+     // Buscar impresora
+     qz.printers.find('Mi Impresora').then((printer) => {
+        console.log('Impresora encontrada:', printer);
+    
+        // Enviar datos de impresión
+        const data = [
+          { type: 'raw', data: 'Hola, mundo!\n' }
+        ];
+        qz.print(printer, data).then(() => {
+          console.log('Datos enviados a la impresora');
+        }).catch((err) => {
+          console.error('Error al enviar datos de impresión:', err);
+        });
+      }).catch((err) => {
+        console.error('Error al buscar impresora:', err);
+      });
  });
 
 
