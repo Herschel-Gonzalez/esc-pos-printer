@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * @version 2.2.3-SNAPSHOT
+ * @version 2.2.2
  * @overview QZ Tray Connector
  * <p/>
  * Connects a web client to the QZ Tray software.
@@ -23,10 +23,22 @@ var qz = (function() {
         };
     }
 
+
+    // from SHA implementation
+    if (typeof String.prototype.utf8Encode == 'undefined') {
+        String.prototype.utf8Encode = function() { return unescape(encodeURIComponent(this)); };
+    }
+    if (typeof String.prototype.utf8Decode == 'undefined') {
+        String.prototype.utf8Decode = function() {
+            try { return decodeURIComponent(escape(this)); }
+            catch(e) { return this; } // invalid UTF-8? return as-is
+        };
+    }
+
 ///// PRIVATE METHODS /////
 
     var _qz = {
-        VERSION: "2.2.3-SNAPSHOT",                              //must match @version above
+        VERSION: "2.2.2",                              //must match @version above
         DEBUG: false,
 
         log: {
@@ -138,15 +150,13 @@ var qz = (function() {
 
                                 if (config.keepAlive > 0) {
                                     var interval = setInterval(function() {
-                                        if (!_qz.tools.isActive() || _qz.websocket.connection.interval !== interval) {
+                                        if (!_qz.tools.isActive()) {
                                             clearInterval(interval);
                                             return;
                                         }
 
                                         _qz.websocket.connection.send("ping");
                                     }, config.keepAlive * 1000);
-
-                                    _qz.websocket.connection.interval = interval;
                                 }
                             }
                         };
@@ -886,7 +896,7 @@ var qz = (function() {
             //@formatter:off - keep this block compact
             hash: function(msg) {
                 // add trailing '1' bit (+ 0's padding) to string [§5.1.1]
-                msg = _qz.SHA._utf8Encode(msg) + String.fromCharCode(0x80);
+                msg = msg.utf8Encode() + String.fromCharCode(0x80);
 
                 // constants [§4.2.2]
                 var K = [
@@ -956,20 +966,6 @@ var qz = (function() {
             _maj: function(x, y, z) { return (x & y) ^ (x & z) ^ (y & z); },
             // note can't use toString(16) as it is implementation-dependant, and in IE returns signed numbers when used on full words
             _hexStr: function(n) { var s = "", v; for(var i = 7; i >= 0; i--) { v = (n >>> (i * 4)) & 0xf; s += v.toString(16); } return s; },
-            // implementation of deprecated unescape() based on https://cwestblog.com/2011/05/23/escape-unescape-deprecated/ (and comments)
-            _unescape: function(str) {
-                return str.replace(/%(u[\da-f]{4}|[\da-f]{2})/gi, function(seq) {
-                    if (seq.length - 1) {
-                        return String.fromCharCode(parseInt(seq.substring(seq.length - 3 ? 2 : 1), 16))
-                    } else {
-                        var code = seq.charCodeAt(0);
-                        return code < 256 ? "%" + (0 + code.toString(16)).slice(-2).toUpperCase() : "%u" + ("000" + code.toString(16)).slice(-4).toUpperCase()
-                    }
-                });
-            },
-            _utf8Encode: function(str) {
-                return _qz.SHA._unescape(encodeURIComponent(str));
-            }
             //@formatter:on
         },
     };
@@ -2729,24 +2725,39 @@ var qz = (function() {
     }
 })();
 
-qz.websocket.connect().then(function() {
-    alert("Connected!");
-     // Buscar impresora
-     qz.printers.find('Mi Impresora').then((printer) => {
-        console.log('Impresora encontrada:', printer);
-    
-        // Enviar datos de impresión
-        const data = [
-          { type: 'raw', data: 'Hola, mundo!\n' }
-        ];
-        qz.print(printer, data).then(() => {
-          console.log('Datos enviados a la impresora');
-        }).catch((err) => {
-          console.error('Error al enviar datos de impresión:', err);
-        });
-      }).catch((err) => {
-        console.error('Error al buscar impresora:', err);
-      });
- });
-
-
+async function printToQZ() {
+    try {
+      // Conectar a QZ Tray
+      await qz.api.connect();
+  
+      // Obtener la lista de impresoras disponibles
+      const printers = await qz.printers.find();
+  
+      // Seleccionar una impresora (cambiar el nombre de la impresora por la que deseas utilizar)
+      const printerName = "epson tm-t20";
+      const printer = printers.find(p => p.name === printerName);
+  
+      if (!printer) {
+        throw new Error(`No se encontró la impresora "${printerName}"`);
+      }
+  
+      // Configurar la impresora y la etiqueta (cambiar por el formato que desees imprimir)
+      const config = qz.configs.create(printer);
+      const data = [
+        "^XA",
+        "^FO50,50^A0N50,50^FDHello World!^FS",
+        "^XZ"
+      ];
+  
+      // Enviar los datos de impresión a la impresora seleccionada
+      await qz.print(config, data);
+  
+      // Desconectar de QZ Tray
+      await qz.api.disconnect();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  
+  printToQZ();
+  
